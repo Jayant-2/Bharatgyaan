@@ -1,0 +1,322 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -------------------------------------------------------------
+// Content Structure (Section 12 of Master Blueprint)
+// -------------------------------------------------------------
+
+model ContentCategory {
+  id          String   @id @default(cuid())
+  parentId    String?
+  name        String
+  slug        String   @unique
+  description String?
+  icon        String?  // Lucide icon identifier
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent   ContentCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children ContentCategory[] @relation("CategoryTree")
+  topics   Topic[]
+
+  @@map("content_categories")
+}
+
+model Topic {
+  id             String   @id @default(cuid())
+  categoryId     String
+  title          String
+  slug           String   @unique
+  summary        String
+  coverImageUrl  String?
+  sortOrder      Int      @default(0)
+  status         String   @default("published") // draft | in_review | published | archived
+  disclaimerType String   @default("none")      // none | medical | physical_practice
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  category  ContentCategory @relation(fields: [categoryId], references: [id])
+  subtopics Subtopic[]
+  lessons   Lesson[]
+  videos    Video[]
+
+  @@map("topics")
+}
+
+model Subtopic {
+  id        String   @id @default(cuid())
+  topicId   String
+  title     String
+  slug      String
+  summary   String?
+  sortOrder Int      @default(0)
+  status    String   @default("published")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  topic   Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  lessons Lesson[]
+  videos  Video[]
+
+  @@unique([topicId, slug])
+  @@map("subtopics")
+}
+
+model Lesson {
+  id          String    @id @default(cuid())
+  topicId     String
+  subtopicId  String?
+  title       String
+  slug        String    @unique
+  lessonType  String    @default("lesson") // lesson | recipe | biography | glossary_entry
+  intro       String
+  bodyJson    String    // JSON stringified sections (Intro, Explanation, Key Points, Examples, etc.)
+  difficulty  String    @default("beginner") // beginner | intermediate | advanced
+  estMinutes  Int       @default(5)
+  region      String?
+  period      String?
+  language    String    @default("en")
+  status      String    @default("published") // draft | in_review | published | archived
+  version     Int       @default(1)
+  sortOrder   Int       @default(0)
+  publishedAt DateTime? @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  topic          Topic             @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  subtopic       Subtopic?         @relation(fields: [subtopicId], references: [id], onDelete: SetNull)
+  sources        LessonSource[]
+  keyTerms       LessonKeyTerm[]
+  progress       LessonProgress[]
+  bookmarks      Bookmark[]
+  lessonVideos   LessonVideo[]
+
+  @@map("lessons")
+}
+
+model KeyTerm {
+  id             String          @id @default(cuid())
+  term           String
+  transliteration String?
+  devanagari     String?
+  meaning        String
+  topicId        String?
+  createdAt      DateTime        @default(now())
+
+  lessons LessonKeyTerm[]
+
+  @@map("key_terms")
+}
+
+model LessonKeyTerm {
+  lessonId  String
+  keyTermId String
+
+  lesson  Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  keyTerm KeyTerm @relation(fields: [keyTermId], references: [id], onDelete: Cascade)
+
+  @@id([lessonId, keyTermId])
+  @@map("lesson_key_terms")
+}
+
+model Source {
+  id              String   @id @default(cuid())
+  sourceType      String   // book | journal_article | thesis | government | university | museum | digitised_text | website | other
+  title           String
+  authors         String
+  publisher       String?
+  year            Int?
+  edition         String?
+  doi             String?
+  isbn            String?
+  url             String?
+  archiveUrl      String?
+  reliabilityTier Int      @default(1) // 1: primary/scholarly, 2: institutional, 3: general
+  notes           String?
+  status          String   @default("active")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  lessonSources LessonSource[]
+
+  @@map("sources")
+}
+
+model LessonSource {
+  id            String   @id @default(cuid())
+  lessonId      String
+  sourceId      String
+  locator       String?  // page/verse/chapter
+  citationNote  String?
+  claimType     String   @default("scholarly") // historical | traditional | scholarly | scientific | mixed
+  createdAt     DateTime @default(now())
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  source Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([lessonId, sourceId, locator])
+  @@map("lesson_sources")
+}
+
+model Video {
+  id              String   @id @default(cuid())
+  youtubeVideoId  String   @unique
+  url             String
+  title           String
+  description     String?
+  thumbnailUrl    String?
+  channelName     String?
+  channelId       String?
+  durationSeconds Int?
+  language        String   @default("en")
+  topicId         String
+  subtopicId      String?
+  difficulty      String?
+  sortOrder       Int      @default(0)
+  status          String   @default("active")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  topic        Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  subtopic     Subtopic?     @relation(fields: [subtopicId], references: [id], onDelete: SetNull)
+  lessonVideos LessonVideo[]
+
+  @@map("videos")
+}
+
+model LessonVideo {
+  id        String @id @default(cuid())
+  lessonId  String
+  videoId   String
+  sortOrder Int    @default(0)
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  video  Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([lessonId, videoId])
+  @@map("lesson_videos")
+}
+
+// -------------------------------------------------------------
+// Identity & Access (Section 12)
+// -------------------------------------------------------------
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  passwordHash      String?
+  displayName       String
+  avatarUrl         String?
+  preferredLanguage String    @default("en")
+  educationLevel    String?
+  status            String    @default("active") // active | suspended | deleted
+  lastLoginAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  userRoles       UserRole[]
+  progress        LessonProgress[]
+  bookmarks       Bookmark[]
+  aiConversations AiConversation[]
+
+  @@map("users")
+}
+
+model Role {
+  id   String @id @default(cuid())
+  name String @unique // student | teacher | reviewer | editor | admin
+
+  userRoles UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+// -------------------------------------------------------------
+// Student Activity & Progress
+// -------------------------------------------------------------
+
+model LessonProgress {
+  id           String    @id @default(cuid())
+  userId       String
+  lessonId     String
+  status       String    @default("in_progress") // not_started | in_progress | completed
+  progressPct  Int       @default(0)
+  lastPosition String?
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+  timeSpentSec Int       @default(0)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@map("lesson_progress")
+}
+
+model Bookmark {
+  id         String   @id @default(cuid())
+  userId     String
+  targetType String   // topic | lesson | video
+  targetId   String
+  createdAt  DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson? @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, targetType, targetId])
+  @@map("bookmarks")
+}
+
+// -------------------------------------------------------------
+// AI Tutor & Grounded Conversations
+// -------------------------------------------------------------
+
+model AiConversation {
+  id        String   @id @default(cuid())
+  userId    String?
+  scopeType String   @default("global") // global | topic | lesson
+  scopeId   String?
+  title     String?
+  createdAt DateTime @default(now())
+
+  user     User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AiMessage[]
+
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String   // user | assistant | system
+  content        String
+  citationsJson  String?  // Array of citation references
+  claimTypes     String?  // Serialized list of claim types used
+  confidence     Float?
+  refusalReason  String?  // no_evidence | medical_advice | off_topic | safety
+  latencyMs      Int?
+  createdAt      DateTime @default(now())
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("ai_messages")
+}
